@@ -52,9 +52,9 @@ by adding the corresponding line to your `.zshrc` file.
 
 ## Usage
 
-After building and activation bash autocopletion as described
-above, just enter part of a call to `idris2` and press tab whenever
-you feel like it.
+After building and activating bash autocompletion as described
+above, just enter part of a call to `idris2` and press tab once
+or twice whenever you feel like it.
 
 ## Project TODO
 
