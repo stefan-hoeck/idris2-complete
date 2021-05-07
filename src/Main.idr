@@ -451,6 +451,10 @@ sortedNub = nub . sort
 prefixOnly : String -> List String -> List String
 prefixOnly x = sortedNub . filter (\s => x /= s && isPrefixOf x s)
 
+prefixOnlyIfNonEmpty : String -> List String -> List String
+prefixOnlyIfNonEmpty "--" = id
+prefixOnlyIfNonEmpty s    = prefixOnly s
+
 optStrings : List String
 optStrings = options >>= flags
 
@@ -460,58 +464,52 @@ codegens = map fst $ availableCGs defaults
 logLevels : List String
 logLevels = map show $ [0 .. 10]
 
-opts : {auto c : Ref Ctxt Defs} -> List String -> Core (List String)
-opts []         = pure []
-opts ["idris2"] = pure optStrings
+opts : {auto c : Ref Ctxt Defs} -> (String,String) -> Core (List String)
+opts ("--","idris2") = pure optStrings
 
 -- codegens
-opts ("--cg" :: xs)           = pure codegens
-opts ("--codegen" :: xs)      = pure codegens
-opts (x :: "--cg" :: xs)      = pure $ prefixOnly x codegens
-opts (x :: "--codegen" :: xs) = pure $ prefixOnly x codegens
+opts (x, "--cg")      = pure $ prefixOnlyIfNonEmpty x codegens
+opts (x, "--codegen") = pure $ prefixOnlyIfNonEmpty x codegens
 
 -- packages
-opts ("-p" :: xs)             = findPackages
-opts ("--package" :: xs)      = findPackages
-opts (x :: "-p" :: xs)        = prefixOnly x  <$> findPackages
-opts (x :: "--package" :: xs) = prefixOnly x  <$> findPackages
+opts (x, "-p")        = prefixOnlyIfNonEmpty x  <$> findPackages
+opts (x, "--package") = prefixOnlyIfNonEmpty x  <$> findPackages
 
 -- logging
-opts ("--log" :: xs)          = pure logLevels
-opts (x :: "--log" :: xs)     = pure $ prefixOnly x logLevels
+opts (x, "--log")     = pure $ prefixOnlyIfNonEmpty x logLevels
+
+-- with directories
+opts ("--", "--source-dir") = pure []
+opts ("--", "--build-dir")  = pure []
+opts ("--", "--output-dir") = pure []
 
 -- with package files
-opts ("--build" :: xs)          = findIpkg
-opts ("--install" :: xs)        = findIpkg
-opts ("--mkdoc" :: xs)          = findIpkg
-opts ("--typecheck" :: xs)      = findIpkg
-opts ("--clean" :: xs)          = findIpkg
-opts ("--repl" :: xs)           = findIpkg
-opts (x :: "--build" :: xs)     = prefixOnly x  <$> findIpkg
-opts (x :: "--install" :: xs)   = prefixOnly x  <$> findIpkg
-opts (x :: "--mkdoc" :: xs)     = prefixOnly x  <$> findIpkg
-opts (x :: "--typecheck" :: xs) = prefixOnly x  <$> findIpkg
-opts (x :: "--clean" :: xs)     = prefixOnly x  <$> findIpkg
-opts (x :: "--repl" :: xs)      = prefixOnly x  <$> findIpkg
+opts (x, "--build")     = prefixOnlyIfNonEmpty x <$> findIpkg
+opts (x, "--install")   = prefixOnlyIfNonEmpty x <$> findIpkg
+opts (x, "--mkdoc")     = prefixOnlyIfNonEmpty x <$> findIpkg
+opts (x, "--typecheck") = prefixOnlyIfNonEmpty x <$> findIpkg
+opts (x, "--clean")     = prefixOnlyIfNonEmpty x <$> findIpkg
+opts (x, "--repl")      = prefixOnlyIfNonEmpty x <$> findIpkg
 
 -- options
-opts (x :: xs) = pure $ if (x `elem` optStrings)
-                           then Nil
-                           else prefixOnly x  optStrings
+opts (x,_) = pure $ if (x `elem` optStrings)
+                       then Nil
+                       else prefixOnly x  optStrings
 
 --------------------------------------------------------------------------------
 --          Main
 --------------------------------------------------------------------------------
 
 -- Parts of stMain from Idris.Driver
-stMain : String -> Core (List String)
-stMain str = do defs <- initDefs
-                c <- newRef Ctxt defs
-                setWorkingDir "."
-                updateEnv
-                opts . reverse. filter ((> 0) . length) $ words str
+stMain : (String,String) -> Core (List String)
+stMain ss = do defs <- initDefs
+               c <- newRef Ctxt defs
+               setWorkingDir "."
+               updateEnv
+               opts ss
 
 main : IO ()
-main = do s    <- getEnv "IDRIS_WORDS"
-          opts <- coreRun (stMain $ fromMaybe "" s) (\_ => pure []) pure
+main = do [_,a,b] <- getArgs
+            | _ => pure ()
+          opts <- coreRun (stMain (a,b)) (\_ => pure []) pure
           putStr $ unlines opts

@@ -58,7 +58,7 @@ or twice whenever you feel like it.
 
 ## Project TODO
 
-- [ ] Autocompletion
+- [x] Autocompletion
   - [x] Complete command line option names
   - [x] Lookup and complete Idris2 package names
   - [x] Complete directory paths
@@ -66,4 +66,4 @@ or twice whenever you feel like it.
   - [x] Complete available backends (only the defaults so far)
   - [x] Complete package file names
   - [x] Complete log level
-  - [ ] Support completion in the middle of a command
+  - [x] Support completion in the middle of a command
