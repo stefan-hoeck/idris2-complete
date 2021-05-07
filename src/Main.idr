@@ -460,6 +460,8 @@ opts (x, "--package") = prefixOnlyIfNonEmpty x  <$> findPackages
 opts (x, "--log")     = pure $ prefixOnlyIfNonEmpty x logLevels
 
 -- with directories
+opts ("--", "-o")           = pure []
+opts ("--", "--output")     = pure []
 opts ("--", "--source-dir") = pure []
 opts ("--", "--build-dir")  = pure []
 opts ("--", "--output-dir") = pure []
