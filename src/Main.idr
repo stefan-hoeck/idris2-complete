@@ -18,6 +18,7 @@ import Core.Options
 
 import Libraries.Utils.Path
 import Libraries.Data.List1 as Lib
+import Libraries.System.Directory.Tree
 import Data.List1
 import Data.Strings
 import Data.Maybe
@@ -349,24 +350,31 @@ updateEnv
 --          Package Names
 --------------------------------------------------------------------------------
 
--- List of directory entries
-dirEntries : String -> IO (List String)
-dirEntries dname = do Right d <- openDir dname
-                        | Left err => pure []
-                      getFiles d []
-  where getFiles : Directory -> List String -> IO (List String)
-        getFiles d acc
-           = do Right str <- dirEntry d
-                      | Left err => pure (reverse acc)
-                if str == "." || str == ".."
-                   then getFiles d acc
-                   else getFiles d (str :: acc)
+exploreNonHidden : (root : Path) -> IO (Tree root)
+exploreNonHidden r = map (filter notHidden notHidden) $ explore r
+  where notHidden : {root : _} -> FileName root -> Bool
+        notHidden = not . isPrefixOf "." . fileName
+
+-- List of directory entries at the given path
+dirsAt : String -> IO (List String)
+dirsAt pth = do MkTree _ ds <- exploreNonHidden (parse pth)
+                pure (map (fileName . fst) ds)
+
+-- List of directory entries at the given path
+dirsPathsAt : String -> IO (List String)
+dirsPathsAt pth = do MkTree _ ds <- exploreNonHidden (parse pth)
+                     pure (map (\p => (toFilePath $ fst p) ++ "/") ds)
+
+-- List of file entries at the given path
+filesAt : String -> IO (List String)
+filesAt pth = do MkTree fs _ <- exploreNonHidden (parse pth)
+                 pure (map fileName fs)
 
 -- lots of duplications with functionality in `Idris.SetOptions`. Will have
 -- to extract the common parts once this goes to Idris2 itself
 export
 packageNames : String -> IO (List String)
-packageNames dname = map (map (fst . getVersion)) $ dirEntries dname
+packageNames dname = map (map (fst . getVersion)) $ dirsAt dname
   where
     toVersion : String -> Maybe PkgVersion
     toVersion = map MkPkgVersion
@@ -392,7 +400,7 @@ findIpkg : {auto c : Ref Ctxt Defs} -> Core (List String)
 findIpkg =
   do Just srcdir <- coreLift currentDir
        | Nothing => throw (InternalError "Can't get current directory")
-     fs <- coreLift $ dirEntries srcdir
+     fs <- coreLift $ filesAt srcdir
      pure $ filter (".ipkg" `isSuffixOf`) fs
 
 findPackages : {auto c : Ref Ctxt Defs} -> Core (List String)
@@ -410,6 +418,25 @@ findPackages =
      locFiles <- coreLift $ packageNames localdir
      globFiles <- coreLift $ packageNames globaldir
      pure $ locFiles ++ globFiles
+
+dirExists : String -> IO Bool
+dirExists fp = do
+  Right dir <- openDir fp
+    | Left _ => pure False
+  closeDir dir
+  pure True
+
+completeDir : String -> Core (List String)
+completeDir s = do b <- coreLift $ dirExists s
+                   if b
+                      then coreLift $ dirsPathsAt s
+                      else case parent s of
+                             Just p  => coreLift $ dirsPathsAt p
+                             Nothing => pure []
+
+listDirs : Core (List String)
+listDirs = do d <- coreLift currentDir
+              completeDir $ fromMaybe "." d
 
 --------------------------------------------------------------------------------
 --          Options
@@ -460,6 +487,13 @@ opts (x :: "--typecheck" :: xs) = prefixOnly x  <$> findIpkg
 opts (x :: "--clean" :: xs)     = prefixOnly x  <$> findIpkg
 opts (x :: "--repl" :: xs)      = prefixOnly x  <$> findIpkg
 
+-- with directories
+opts ("--source-dir" :: xs)       = listDirs
+opts ("--build-dir" :: xs)        = listDirs
+opts ("--output-dir" :: xs)       = listDirs
+opts (x :: "--source-dir" :: xs)  = prefixOnly x <$> completeDir x
+opts (x :: "--build-dir" :: xs)   = prefixOnly x <$> completeDir x
+opts (x :: "--output-dir" :: xs)  = prefixOnly x <$> completeDir x
 
 -- options
 opts (x :: xs) = pure $ prefixOnly x  optStrings
