@@ -20,7 +20,8 @@ line points to the executable:
 
 ### Bash
 If you use `bash` as your shell, all you have to do is
-source `complete_idris.sh`:
+source `complete_idris.sh` (after having adjusted the path
+to the built executable as described above):
 
 ```
 $> source complete_idris.sh
@@ -39,7 +40,8 @@ autoload -U +X compinit && compinit
 autoload -U +X bashcompinit && bashcompinit
 ```
 
-Now you can source `complete_idris.sh`:
+Now you can source `complete_idris.sh` (make sure to first
+adjust the path to the executable as described above):
 
 ```
 $> source complete_idris.sh
