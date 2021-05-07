@@ -64,7 +64,7 @@ you feel like it.
   - [ ] Complete directory paths
   - [ ] Complete file names
   - [x] Complete available backends (only the defaults so far)
-  - [ ] Complete package file names
+  - [x] Complete package file names
   - [ ] Complete console width
   - [ ] Complete log level
   - [ ] Complete available codegen directives

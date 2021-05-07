@@ -349,13 +349,24 @@ updateEnv
 --          Package Names
 --------------------------------------------------------------------------------
 
+-- List of directory entries
+dirEntries : String -> IO (List String)
+dirEntries dname = do Right d <- openDir dname
+                        | Left err => pure []
+                      getFiles d []
+  where getFiles : Directory -> List String -> IO (List String)
+        getFiles d acc
+           = do Right str <- dirEntry d
+                      | Left err => pure (reverse acc)
+                if str == "." || str == ".."
+                   then getFiles d acc
+                   else getFiles d (str :: acc)
+
 -- lots of duplications with functionality in `Idris.SetOptions`. Will have
 -- to extract the common parts once this goes to Idris2 itself
 export
 packageNames : String -> IO (List String)
-packageNames dname = do Right d <- openDir dname
-                          | Left err => pure []
-                        getFiles d []
+packageNames dname = map (map (fst . getVersion)) $ dirEntries dname
   where
     toVersion : String -> Maybe PkgVersion
     toVersion = map MkPkgVersion
@@ -377,21 +388,12 @@ packageNames dname = do Right d <- openDir dname
             Just v  => (concat $ intersperse "-" init, Just v)
             Nothing => (str, Nothing)
 
-    -- Return a list of package names
-    getFiles : Directory -> List String -> IO (List String)
-    getFiles d acc
-        = do Right str <- dirEntry d
-                   | Left err => pure (reverse acc)
-             let (pkgdir, _) = getVersion str
-             if pkgdir == "." || pkgdir == ".."
-                then getFiles d acc
-                else getFiles d (pkgdir :: acc)
-
-sortedNub : Ord a => List a -> List a
-sortedNub = nub . sort
-  where nub : List a -> List a
-        nub (a :: t@(b :: _)) = if a == b then nub t else a :: nub t
-        nub xs                = xs
+findIpkg : {auto c : Ref Ctxt Defs} -> Core (List String)
+findIpkg =
+  do Just srcdir <- coreLift currentDir
+       | Nothing => throw (InternalError "Can't get current directory")
+     fs <- coreLift $ dirEntries srcdir
+     pure $ filter (".ipkg" `isSuffixOf`) fs
 
 findPackages : {auto c : Ref Ctxt Defs} -> Core (List String)
 findPackages =
@@ -407,11 +409,20 @@ findPackages =
      -- and the local package directory
      locFiles <- coreLift $ packageNames localdir
      globFiles <- coreLift $ packageNames globaldir
-     pure . sortedNub $ locFiles ++ globFiles
+     pure $ locFiles ++ globFiles
 
 --------------------------------------------------------------------------------
 --          Options
 --------------------------------------------------------------------------------
+
+sortedNub : Ord a => List a -> List a
+sortedNub = nub . sort
+  where nub : List a -> List a
+        nub (a :: t@(b :: _)) = if a == b then nub t else a :: nub t
+        nub xs                = xs
+
+prefixOnly : String -> List String -> List String
+prefixOnly x = sortedNub . filter (x `isPrefixOf`)
 
 optStrings : List String
 optStrings = options >>= flags
@@ -424,20 +435,34 @@ opts []         = pure []
 opts ["idris2"] = pure optStrings
 
 -- codegens
-opts ("--cg" :: xs)  = pure codegens
-opts ("--codegen" :: xs)  = pure codegens
-opts (x :: "--cg" :: xs)  = pure $ filter (x `isPrefixOf` )codegens
-opts (x :: "--codegen" :: xs)  = pure $ filter (x `isPrefixOf` )codegens
+opts ("--cg" :: xs)           = pure codegens
+opts ("--codegen" :: xs)      = pure codegens
+opts (x :: "--cg" :: xs)      = pure $ prefixOnly x codegens
+opts (x :: "--codegen" :: xs) = pure $ prefixOnly x codegens
 
 -- packages
-opts ("-p" :: xs) = findPackages
-opts ("--package" :: xs) = findPackages
-opts (x :: "-p" :: xs) = filter (x `isPrefixOf` ) <$> findPackages
-opts (x :: "--package" :: xs) = filter (x `isPrefixOf` ) <$> findPackages
+opts ("-p" :: xs)             = findPackages
+opts ("--package" :: xs)      = findPackages
+opts (x :: "-p" :: xs)        = prefixOnly x  <$> findPackages
+opts (x :: "--package" :: xs) = prefixOnly x  <$> findPackages
+
+-- with package files
+opts ("--build" :: xs)          = findIpkg
+opts ("--install" :: xs)        = findIpkg
+opts ("--mkdoc" :: xs)          = findIpkg
+opts ("--typecheck" :: xs)      = findIpkg
+opts ("--clean" :: xs)          = findIpkg
+opts ("--repl" :: xs)           = findIpkg
+opts (x :: "--build" :: xs)     = prefixOnly x  <$> findIpkg
+opts (x :: "--install" :: xs)   = prefixOnly x  <$> findIpkg
+opts (x :: "--mkdoc" :: xs)     = prefixOnly x  <$> findIpkg
+opts (x :: "--typecheck" :: xs) = prefixOnly x  <$> findIpkg
+opts (x :: "--clean" :: xs)     = prefixOnly x  <$> findIpkg
+opts (x :: "--repl" :: xs)      = prefixOnly x  <$> findIpkg
 
 
 -- options
-opts (x :: xs) = pure $ filter (x `isPrefixOf`) optStrings
+opts (x :: xs) = pure $ prefixOnly x  optStrings
 
 --------------------------------------------------------------------------------
 --          Main
