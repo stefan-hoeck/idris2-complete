@@ -3,16 +3,27 @@ module Main
 
 import IdrisPaths
 
+import Core.Context
+import Core.Directory
+import Core.Metadata
+import Core.Options
+import Core.Unify
+
 import Idris.Env
 import Idris.Version
+import Idris.Package.Types
 
 import Core.Name.Namespace
 import Core.Options
 
+import Libraries.Utils.Path
+import Libraries.Data.List1 as Lib
+import Data.List1
 import Data.Strings
 import Data.Maybe
 import Data.String
 import System
+import System.Directory
 
 --------------------------------------------------------------------------------
 --          Options
@@ -284,6 +295,121 @@ options = [MkOpt ["--check", "-c"] [] [CheckOnly]
            ]
 
 --------------------------------------------------------------------------------
+--          Context
+--------------------------------------------------------------------------------
+
+-- More copy paste
+-- Add extra data from the "IDRIS2_x" environment variables
+updateEnv : {auto c : Ref Ctxt Defs} ->
+            Core ()
+updateEnv
+    = do defs <- get Ctxt
+         bprefix <- coreLift $ idrisGetEnv "IDRIS2_PREFIX"
+         the (Core ()) $ case bprefix of
+              Just p => setPrefix p
+              Nothing => setPrefix yprefix
+         bpath <- coreLift $ idrisGetEnv "IDRIS2_PATH"
+         the (Core ()) $ case bpath of
+              Just path => do traverseList1_ addExtraDir (map trim (split (==pathSeparator) path))
+              Nothing => pure ()
+         bdata <- coreLift $ idrisGetEnv "IDRIS2_DATA"
+         the (Core ()) $ case bdata of
+              Just path => do traverseList1_ addDataDir (map trim (split (==pathSeparator) path))
+              Nothing => pure ()
+         blibs <- coreLift $ idrisGetEnv "IDRIS2_LIBS"
+         the (Core ()) $ case blibs of
+              Just path => do traverseList1_ addLibDir (map trim (split (==pathSeparator) path))
+              Nothing => pure ()
+         pdirs <- coreLift $ idrisGetEnv "IDRIS2_PACKAGE_PATH"
+         the (Core ()) $ case pdirs of
+              Just path => do traverseList1_ addPackageDir (map trim (split (==pathSeparator) path))
+              Nothing => pure ()
+         cg <- coreLift $ idrisGetEnv "IDRIS2_CG"
+         the (Core ()) $ case cg of
+              Just e => case getCG (options defs) e of
+                             Just cg => setCG cg
+                             Nothing => throw (InternalError ("Unknown code generator " ++ show e))
+              Nothing => pure ()
+
+         -- IDRIS2_PATH goes first so that it overrides this if there's
+         -- any conflicts. In particular, that means that setting IDRIS2_PATH
+         -- for the tests means they test the local version not the installed
+         -- version
+         defs <- get Ctxt
+         -- These might fail while bootstrapping
+         addDataDir (prefix_dir (dirs (options defs)) </>
+                        ("idris2-" ++ showVersion False version) </> "support")
+         addLibDir (prefix_dir (dirs (options defs)) </>
+                        ("idris2-" ++ showVersion False version) </> "lib")
+         Just cwd <- coreLift $ currentDir
+              | Nothing => throw (InternalError "Can't get current directory")
+         addLibDir cwd
+
+--------------------------------------------------------------------------------
+--          Package Names
+--------------------------------------------------------------------------------
+
+-- lots of duplications with functionality in `Idris.SetOptions`. Will have
+-- to extract the common parts once this goes to Idris2 itself
+export
+packageNames : String -> IO (List String)
+packageNames dname = do Right d <- openDir dname
+                          | Left err => pure []
+                        getFiles d []
+  where
+    toVersion : String -> Maybe PkgVersion
+    toVersion = map MkPkgVersion
+              . traverse parsePositive
+              . split (== '.')
+
+    getVersion : String -> (String, Maybe PkgVersion)
+    getVersion str =
+      -- Split the dir name into parts concatenated by "-"
+      -- treating the last part as the version number
+      -- and the initial parts as the package name.
+      -- For reasons of backwards compatibility, we also
+      -- accept hyphenated directory names without a part
+      -- corresponding to a version number.
+      case Lib.unsnoc $ split (== '-') str of
+        (Nil, last) => (last, Nothing)
+        (init,last) =>
+          case toVersion last of
+            Just v  => (concat $ intersperse "-" init, Just v)
+            Nothing => (str, Nothing)
+
+    -- Return a list of package names
+    getFiles : Directory -> List String -> IO (List String)
+    getFiles d acc
+        = do Right str <- dirEntry d
+                   | Left err => pure (reverse acc)
+             let (pkgdir, _) = getVersion str
+             if pkgdir == "." || pkgdir == ".."
+                then getFiles d acc
+                else getFiles d (pkgdir :: acc)
+
+sortedNub : Ord a => List a -> List a
+sortedNub = nub . sort
+  where nub : List a -> List a
+        nub (a :: t@(b :: _)) = if a == b then nub t else a :: nub t
+        nub xs                = xs
+
+findPackages : {auto c : Ref Ctxt Defs} -> Core (List String)
+findPackages =
+  do defs <- get Ctxt
+     let globaldir = prefix_dir (dirs (options defs)) </>
+                           "idris2-" ++ showVersion False version
+     let depends = depends_dir (dirs (options defs))
+     Just srcdir <- coreLift currentDir
+         | Nothing => throw (InternalError "Can't get current directory")
+     let localdir = srcdir </> depends
+
+     -- Get candidate directories from the global install location,
+     -- and the local package directory
+     locFiles <- coreLift $ packageNames localdir
+     globFiles <- coreLift $ packageNames globaldir
+     pure . sortedNub $ locFiles ++ globFiles
+
+--------------------------------------------------------------------------------
 --          Options
 --------------------------------------------------------------------------------
 
@@ -293,22 +419,39 @@ optStrings = options >>= flags
 codegens : List String
 codegens = map fst $ availableCGs defaults
 
-possibleOptions : String -> List String
-possibleOptions s =
-  case reverse $ filter ((> 0) . length) $ words s of
-    []         => []
-    ["idris2"] => optStrings
+opts : {auto c : Ref Ctxt Defs} -> List String -> Core (List String)
+opts []         = pure []
+opts ["idris2"] = pure optStrings
 
-    -- codegens
-    ("--cg" :: xs)  => codegens
-    ("--codegen" :: xs)  => codegens
-    (x :: "--cg" :: xs)  => filter (x `isPrefixOf` )codegens
-    (x :: "--codegen" :: xs)  => filter (x `isPrefixOf` )codegens
+-- codegens
+opts ("--cg" :: xs)  = pure codegens
+opts ("--codegen" :: xs)  = pure codegens
+opts (x :: "--cg" :: xs)  = pure $ filter (x `isPrefixOf` )codegens
+opts (x :: "--codegen" :: xs)  = pure $ filter (x `isPrefixOf` )codegens
 
-    -- options
-    (x :: xs)  => filter (x `isPrefixOf`) optStrings
+-- packages
+opts ("-p" :: xs) = findPackages
+opts ("--package" :: xs) = findPackages
+opts (x :: "-p" :: xs) = filter (x `isPrefixOf` ) <$> findPackages
+opts (x :: "--package" :: xs) = filter (x `isPrefixOf` ) <$> findPackages
 
+
+-- options
+opts (x :: xs) = pure $ filter (x `isPrefixOf`) optStrings
+
+--------------------------------------------------------------------------------
+--          Main
+--------------------------------------------------------------------------------
+
+-- Parts of stMain from Idris.Driver
+stMain : String -> Core (List String)
+stMain str = do defs <- initDefs
+                c <- newRef Ctxt defs
+                setWorkingDir "."
+                updateEnv
+                opts . reverse. filter ((> 0) . length) $ words str
 
 main : IO ()
-main = do idrisWords <- getEnv "IDRIS_WORDS"
-          putStr . unwords . possibleOptions $ fromMaybe "" idrisWords
+main = do s    <- getEnv "IDRIS_WORDS"
+          opts <- coreRun (stMain $ fromMaybe "" s) (\_ => pure []) pure
+          putStr $ unwords opts

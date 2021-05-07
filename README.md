@@ -60,7 +60,7 @@ you feel like it.
 
 - [ ] Autocompletion
   - [x] Complete command line option names
-  - [ ] Lookup and complete Idris2 package names
+  - [x] Lookup and complete Idris2 package names
   - [ ] Complete directory paths
   - [ ] Complete file names
   - [x] Complete available backends (only the defaults so far)
