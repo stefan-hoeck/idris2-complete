@@ -63,8 +63,9 @@ you feel like it.
   - [ ] Lookup and complete Idris2 package names
   - [ ] Complete directory paths
   - [ ] Complete file names
-  - [ ] Complete available backends
+  - [x] Complete available backends (only the defaults so far)
   - [ ] Complete package file names
   - [ ] Complete console width
   - [ ] Complete log level
   - [ ] Complete available codegen directives
+  - [ ] Support completion in the middle of a command

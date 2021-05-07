@@ -290,11 +290,23 @@ options = [MkOpt ["--check", "-c"] [] [CheckOnly]
 optStrings : List String
 optStrings = options >>= flags
 
+codegens : List String
+codegens = map fst $ availableCGs defaults
+
 possibleOptions : String -> List String
-possibleOptions s = case reverse $ filter ((> 0) . length) $ words s of
-                         []         => []
-                         ["idris2"] => optStrings
-                         (x :: xs)  => filter (x `isPrefixOf`) optStrings
+possibleOptions s =
+  case reverse $ filter ((> 0) . length) $ words s of
+    []         => []
+    ["idris2"] => optStrings
+
+    -- codegens
+    ("--cg" :: xs)  => codegens
+    ("--codegen" :: xs)  => codegens
+    (x :: "--cg" :: xs)  => filter (x `isPrefixOf` )codegens
+    (x :: "--codegen" :: xs)  => filter (x `isPrefixOf` )codegens
+
+    -- options
+    (x :: xs)  => filter (x `isPrefixOf`) optStrings
 
 
 main : IO ()
