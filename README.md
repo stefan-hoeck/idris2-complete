@@ -61,11 +61,11 @@ or twice whenever you feel like it.
 - [ ] Autocompletion
   - [x] Complete command line option names
   - [x] Lookup and complete Idris2 package names
-  - [ ] Complete directory paths
-  - [ ] Complete file names
+  - [x] Complete directory paths
+  - [x] Complete file names
   - [x] Complete available backends (only the defaults so far)
   - [x] Complete package file names
   - [ ] Complete console width
-  - [ ] Complete log level
+  - [x] Complete log level
   - [ ] Complete available codegen directives
   - [ ] Support completion in the middle of a command

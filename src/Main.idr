@@ -449,13 +449,16 @@ sortedNub = nub . sort
         nub xs                = xs
 
 prefixOnly : String -> List String -> List String
-prefixOnly x = sortedNub . filter (x `isPrefixOf`)
+prefixOnly x = sortedNub . filter (\s => x /= s && isPrefixOf x s)
 
 optStrings : List String
 optStrings = options >>= flags
 
 codegens : List String
 codegens = map fst $ availableCGs defaults
+
+logLevels : List String
+logLevels = map show $ [0 .. 10]
 
 opts : {auto c : Ref Ctxt Defs} -> List String -> Core (List String)
 opts []         = pure []
@@ -473,6 +476,10 @@ opts ("--package" :: xs)      = findPackages
 opts (x :: "-p" :: xs)        = prefixOnly x  <$> findPackages
 opts (x :: "--package" :: xs) = prefixOnly x  <$> findPackages
 
+-- logging
+opts ("--log" :: xs)          = pure logLevels
+opts (x :: "--log" :: xs)     = pure $ prefixOnly x logLevels
+
 -- with package files
 opts ("--build" :: xs)          = findIpkg
 opts ("--install" :: xs)        = findIpkg
@@ -487,16 +494,10 @@ opts (x :: "--typecheck" :: xs) = prefixOnly x  <$> findIpkg
 opts (x :: "--clean" :: xs)     = prefixOnly x  <$> findIpkg
 opts (x :: "--repl" :: xs)      = prefixOnly x  <$> findIpkg
 
--- with directories
-opts ("--source-dir" :: xs)       = listDirs
-opts ("--build-dir" :: xs)        = listDirs
-opts ("--output-dir" :: xs)       = listDirs
-opts (x :: "--source-dir" :: xs)  = prefixOnly x <$> completeDir x
-opts (x :: "--build-dir" :: xs)   = prefixOnly x <$> completeDir x
-opts (x :: "--output-dir" :: xs)  = prefixOnly x <$> completeDir x
-
 -- options
-opts (x :: xs) = pure $ prefixOnly x  optStrings
+opts (x :: xs) = pure $ if (x `elem` optStrings)
+                           then Nil
+                           else prefixOnly x  optStrings
 
 --------------------------------------------------------------------------------
 --          Main
@@ -513,4 +514,4 @@ stMain str = do defs <- initDefs
 main : IO ()
 main = do s    <- getEnv "IDRIS_WORDS"
           opts <- coreRun (stMain $ fromMaybe "" s) (\_ => pure []) pure
-          putStr $ unwords opts
+          putStr $ unlines opts
