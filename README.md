@@ -67,5 +67,4 @@ or twice whenever you feel like it.
   - [x] Complete package file names
   - [ ] Complete console width
   - [x] Complete log level
-  - [ ] Complete available codegen directives
   - [ ] Support completion in the middle of a command
