@@ -2,7 +2,7 @@
 
 _idris2_completions()
 {
-  export IDRIS_WORDS=$(echo ${COMP_WORDS[*]})
+  export IDRIS_WORDS="${COMP_WORDS[*]}"
   COMPREPLY=( $(/home/gundi/idris/complete/build/exec/complete) )
 }
 
