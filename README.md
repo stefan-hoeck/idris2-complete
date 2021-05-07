@@ -65,6 +65,5 @@ or twice whenever you feel like it.
   - [x] Complete file names
   - [x] Complete available backends (only the defaults so far)
   - [x] Complete package file names
-  - [ ] Complete console width
   - [x] Complete log level
   - [ ] Support completion in the middle of a command
