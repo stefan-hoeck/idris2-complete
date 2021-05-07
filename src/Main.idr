@@ -419,25 +419,6 @@ findPackages =
      globFiles <- coreLift $ packageNames globaldir
      pure $ locFiles ++ globFiles
 
-dirExists : String -> IO Bool
-dirExists fp = do
-  Right dir <- openDir fp
-    | Left _ => pure False
-  closeDir dir
-  pure True
-
-completeDir : String -> Core (List String)
-completeDir s = do b <- coreLift $ dirExists s
-                   if b
-                      then coreLift $ dirsPathsAt s
-                      else case parent s of
-                             Just p  => coreLift $ dirsPathsAt p
-                             Nothing => pure []
-
-listDirs : Core (List String)
-listDirs = do d <- coreLift currentDir
-              completeDir $ fromMaybe "." d
-
 --------------------------------------------------------------------------------
 --          Options
 --------------------------------------------------------------------------------
@@ -458,8 +439,8 @@ prefixOnlyIfNonEmpty s    = prefixOnly s
 optStrings : List String
 optStrings = options >>= flags
 
-codegens : List String
-codegens = map fst $ availableCGs defaults
+codegens : {auto c : Ref Ctxt Defs} -> Core (List String)
+codegens = map fst . availableCGs . options <$> get Ctxt
 
 logLevels : List String
 logLevels = map show $ [0 .. 10]
@@ -468,8 +449,8 @@ opts : {auto c : Ref Ctxt Defs} -> (String,String) -> Core (List String)
 opts ("--","idris2") = pure optStrings
 
 -- codegens
-opts (x, "--cg")      = pure $ prefixOnlyIfNonEmpty x codegens
-opts (x, "--codegen") = pure $ prefixOnlyIfNonEmpty x codegens
+opts (x, "--cg")      = prefixOnlyIfNonEmpty x <$> codegens
+opts (x, "--codegen") = prefixOnlyIfNonEmpty x <$> codegens
 
 -- packages
 opts (x, "-p")        = prefixOnlyIfNonEmpty x  <$> findPackages
